@@ -55,4 +55,22 @@ router.get('/list', authenticateToken, function(req, res, next) {
     })
 });
 
+/* Get one session details. */
+router.get('/details', authenticateToken, function(req, res, next) {
+  const { id:  session_id } = req.query;
+  const { id: user_id } = req.user;
+
+  query(
+    `SELECT * FROM public."Session" WHERE id=${session_id} AND user_id=${user_id}`,
+    []
+    ).then(queryResponse => {
+      if(queryResponse.rows.length > 0)
+        res.json({session: queryResponse.rows[0]});
+      else 
+        res.json({err});
+    }).catch(err => {
+      res.json({err});
+    })
+});
+
 module.exports = router;
