@@ -1,4 +1,5 @@
 var express = require('express');
+var moment = require('moment');
 var router = express.Router();
 
 const { authenticateToken } = require('../middlewares/authentication.js');
@@ -71,6 +72,108 @@ router.get('/details', authenticateToken, function(req, res, next) {
     }).catch(err => {
       res.json({err});
     })
+});
+
+/* Get booking infos for a session. */
+router.get('/booking', async function(req, res, next) {
+  const { id:  session_id } = req.query;
+
+  const sessionSettingsQuery = await query(
+    `SELECT settings FROM public."Session" WHERE id=${session_id}`,
+    []
+  );
+
+  const sessionEventsQuery = await query(
+    `SELECT e.id, e.from, e.to FROM public."Event" e WHERE e."Session_id"=${session_id}`,
+    []
+  );
+
+  const sessionSettings = sessionSettingsQuery.rows[0];
+  const sessionEvents = sessionEventsQuery.rows;
+
+  if(
+      !sessionSettings || 
+      !sessionSettings.settings || 
+      !sessionSettings.settings.from || 
+      !sessionSettings.settings.to || 
+      !sessionSettings.settings.ranges || 
+      !sessionSettings.settings.types
+    ) {
+    res.json({
+      ok: false,
+      error: 'Session settings not fully defined',
+    });
+  }
+
+  const {
+    from, to, ranges, types
+  } = sessionSettings.settings;
+
+  // Later spans will be  saved in Session
+  const spans = [];
+
+  const nbDays = moment(to).diff(from, 'days');
+
+  for(var dayIdx = 0; dayIdx <= nbDays; dayIdx++){
+    ranges.forEach(range => {
+      spans.push({
+        from: moment(from).add(dayIdx, 'days').hours(range.from.hours).minutes(range.from.minutes),
+        to: moment(from).add(dayIdx, 'days').hours(range.to.hours).minutes(range.to.minutes),
+        // TODO count later
+        count: 1,
+      })
+    })
+  }
+
+  const available = [];
+
+  spans.forEach(span => {
+    const nbMinutes = moment(span.to).diff(span.from, 'minutes');
+
+    const eventsOnSpan = sessionEvents.filter(event => moment(event.from).isBetween(span.from, span.to) || moment(event.to).isBetween(span.from, span.to) || (moment(event.form).isBefore(span.from)  && moment(event.to).isAfter(span.to)))
+
+    const availableMinutesArray = Array(Math.round(nbMinutes / 5)).fill(span.count);
+
+    eventsOnSpan.forEach(eventOnSpan =>  {
+      const eventNbMinutes = moment(moment.min(eventOnSpan.to, span.to)).diff(moment.max(eventOnSpan.from, span.form), 'minutes');
+      const eventOffsetMnutes =  moment(eventOnSpan.from).diff(span.from, 'minutes');
+
+      for(var minuteIdx = eventOffsetMnutes > 0 ? Math.round(eventOffsetMnutes / 5) : 0; minuteIdx < Math.round(eventNbMinutes / 5); minuteIdx++){
+        availableArray[minuteIdx] = availableArray[minuteIdx] - 1;
+      }
+    });
+
+    let tmpFrom = -1;
+
+    for(var minuteParser = 0; minuteParser < availableMinutesArray.length; minuteParser++){
+      const current5MinutesChunk = availableMinutesArray[minuteParser];
+      const isAvailable = current5MinutesChunk > 0;
+
+      if(tmpFrom === -1) {
+        if(isAvailable) {
+          tmpFrom = minuteParser;
+        }
+      } else {
+        if(!isAvailable || minuteParser === availableMinutesArray.length - 1) {
+          const realFromMinutesOffset = tmpFrom * 5;
+          const realToMinutesOffset = (minuteParser + 1) * 5;
+          
+          available.push({
+            from: moment(span.from).add(realFromMinutesOffset, 'minutes'),
+            to: moment(span.from).add(realToMinutesOffset, 'minutes'),
+          });
+
+          tmpFrom = -1;
+        }
+      }
+    }
+  });
+
+  res.json({
+    ok: true,
+    available,
+    types,
+  });
 });
 
 module.exports = router;
