@@ -19,7 +19,7 @@ module.exports = {
             );
             return res;
         } catch (error) {
-            console.log('error in query', {text});
+            console.log('error in query', {text, error});
             throw error;
         }
     }

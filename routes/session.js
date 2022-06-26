@@ -130,18 +130,22 @@ router.get('/booking', async function(req, res, next) {
   spans.forEach(span => {
     const nbMinutes = moment(span.to).diff(span.from, 'minutes');
 
-    const eventsOnSpan = sessionEvents.filter(event => moment(event.from).isBetween(span.from, span.to) || moment(event.to).isBetween(span.from, span.to) || (moment(event.form).isBefore(span.from)  && moment(event.to).isAfter(span.to)))
+    const eventsOnSpan = sessionEvents.filter(event => moment(event.from).isBetween(span.from, span.to) || moment(event.to).isBetween(span.from, span.to) || (moment(event.from).isBefore(span.from)  && moment(event.to).isAfter(span.to)))
 
     const availableMinutesArray = Array(Math.round(nbMinutes / 5)).fill(span.count);
 
     eventsOnSpan.forEach(eventOnSpan =>  {
-      const eventNbMinutes = moment(moment.min(eventOnSpan.to, span.to)).diff(moment.max(eventOnSpan.from, span.form), 'minutes');
+      const eventNbMinutes = moment(moment.min(eventOnSpan.to, span.to)).diff(moment.max(eventOnSpan.from, span.from), 'minutes');
       const eventOffsetMnutes =  moment(eventOnSpan.from).diff(span.from, 'minutes');
-
-      for(var minuteIdx = eventOffsetMnutes > 0 ? Math.round(eventOffsetMnutes / 5) : 0; minuteIdx < Math.round(eventNbMinutes / 5); minuteIdx++){
-        availableArray[minuteIdx] = availableArray[minuteIdx] - 1;
+      
+      for(var minuteIdx = eventOffsetMnutes > 0 ? Math.round(eventOffsetMnutes / 5) : 0; minuteIdx < (eventOffsetMnutes > 0 ? Math.round(eventOffsetMnutes / 5) : 0) + Math.round(eventNbMinutes / 5); minuteIdx++){
+        if(availableMinutesArray.length > minuteIdx) {
+          availableMinutesArray[minuteIdx] = availableMinutesArray[minuteIdx] - 1;
+        }
       }
     });
+
+    console.log('ALEXIS availableMinutesArray', availableMinutesArray);
 
     let tmpFrom = -1;
 
@@ -174,6 +178,20 @@ router.get('/booking', async function(req, res, next) {
     available,
     types,
   });
+});
+
+/* Save an event. */
+router.post('/booking', function(req, res, next) {
+  const { id:  session_id, from, to, infos } = req.body;
+
+  query(
+    `INSERT INTO public."Event"("Session_id", "from", "to", infos) values (${session_id}, '${from}', '${to}', '${infos || {}}')`,
+    []
+    ).then(_res => {
+      res.json({ok: true});
+    }).catch(err => {
+      res.json({err});
+    })
 });
 
 module.exports = router;
